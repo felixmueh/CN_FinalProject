@@ -5,9 +5,16 @@ use threadpool::ThreadPool;
 
 const N_THREADS: usize = 10;
 
-fn get_adaptor(adaptor: &str, _args: &[String]) -> Box<dyn Adaptor> {
+fn get_adaptor(adaptor: &str, args: &[String]) -> Box<dyn Adaptor> {
     return match adaptor {
         "noop" => Box::new(NoOpAdaptor {}),
+        "max_degree" => {
+            if args.len() < 1 {
+                panic!("Usage: graph-sd-adaptor <input-folder> <output-folder> max_degree <max-degree>");
+            }
+            let max_degree = args[0].parse::<usize>().expect("Invalid max degree");
+            Box::new(graph_sd_adaptor::MaxDegreeAdaptor { max_degree })
+        }
         _ => panic!("Unknown adaptor {}", adaptor),
     };
 }
