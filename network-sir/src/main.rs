@@ -10,7 +10,7 @@ const VERBOSE: bool = false;
 fn conv_plot(in_file: &str, out_file: &str, mu: f64, beta: f64) {
     let mut file = File::open(in_file).expect(format!("Failed to open file {}", in_file).as_str());
     let g = GraphEdgeList::read_pajek(&mut file).unwrap().into();
-    let mut g = SIRGraph::from_graph(&g, mu, beta, 0.2);
+    let mut g = SIRGraph::from_graph(&g, mu, beta, 0.01);
 
     let mut results = Vec::new();
     for _ in 0..100 {

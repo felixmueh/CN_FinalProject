@@ -45,6 +45,8 @@ impl<'a> SIRGraph<'a> {
             if self.rng.gen::<f64>() < self.initial_infection_probability {
                 self.infected1[i] = SIRState::Infected;
                 self.n_infected += 1;
+            } else {
+                self.infected1[i] = SIRState::Susceptible;
             }
             self.n_infected_neighbors[i] = 0;
         }
@@ -97,33 +99,37 @@ impl<'a> SIRGraph<'a> {
 
         for i in 0..self.graph.n_nodes() {
             infected_next[i] = infected[i];
-            if matches!(infected[i], SIRState::Infected) {
-                if self.rng.gen::<f64>() < self.recovery_rate {
-                    infected_next[i] = SIRState::Recovered;
+            match infected[i] {
+                SIRState::Recovered => {}
+                SIRState::Susceptible => {
+                    let n_infected_neighbors = self.n_infected_neighbors[i];
+                    // TODO: Check this formula
+                    if self.rng.gen::<f64>()
+                        > (1.0 - self.infection_rate).powf(n_infected_neighbors as f64)
+                    {
+                        infected_next[i] = SIRState::Infected;
+                    }
                 }
-            } else {
-                let n_infected_neighbors = self.n_infected_neighbors[i];
-                // TODO: Check this formula
-                if self.rng.gen::<f64>()
-                    > (1.0 - self.infection_rate).powf(n_infected_neighbors as f64)
-                {
-                    infected_next[i] = SIRState::Infected;
+                SIRState::Infected => {
+                    if self.rng.gen::<f64>() < self.recovery_rate {
+                        infected_next[i] = SIRState::Recovered;
+                    }
                 }
             }
         }
 
         for i in 0..self.graph.n_nodes() {
             if matches!(
-                (infected_next[i], infected[i]),
-                (SIRState::Infected, SIRState::Susceptible)
+                (infected[i], infected_next[i]),
+                (SIRState::Susceptible, SIRState::Infected)
             ) {
                 for j in self.graph.nodes[i].iter() {
                     self.n_infected_neighbors[*j] += 1;
                 }
                 self.n_infected += 1;
             } else if matches!(
-                (infected_next[i], infected[i]),
-                (SIRState::Recovered, SIRState::Infected)
+                (infected[i], infected_next[i]),
+                (SIRState::Infected, SIRState::Recovered)
             ) {
                 for j in self.graph.nodes[i].iter() {
                     self.n_infected_neighbors[*j] -= 1;
@@ -136,7 +142,13 @@ impl<'a> SIRGraph<'a> {
                 == infected_next
                     .iter()
                     .filter(|&&x| matches!(x, SIRState::Infected))
-                    .count()
+                    .count(),
+            "n_infected: {}, infected_next: {}",
+            self.n_infected,
+            infected_next
+                .iter()
+                .filter(|&&x| matches!(x, SIRState::Infected))
+                .count()
         );
         self.first_is_current = !self.first_is_current;
     }
