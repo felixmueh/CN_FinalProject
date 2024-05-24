@@ -1,6 +1,6 @@
 use rand::seq::SliceRandom;
 
-use crate::{Graph, GraphAdjacencyList, GraphEdgeList};
+use crate::{Graph, GraphEdgeList};
 
 pub trait Adaptor
 where
