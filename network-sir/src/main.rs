@@ -1,9 +1,15 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 use sir_sim::GraphAdjacencyList;
 use sir_sim::GraphEdgeList;
 use sir_sim::SIRGraph;
+
+use threadpool::ThreadPool;
+use threadpool_scope::scope_with;
+
+const N_THREADS: usize = 10;
 
 const VERBOSE: bool = false;
 
@@ -91,29 +97,111 @@ fn beta_sweep(in_file: &str, out_file: &str, n_beta: usize, beta_min: f64, beta_
     }
 }
 
+struct SIRSimProps<'a> {
+    beta: f64,
+    mu: f64,
+    init_prop: f64,
+    n_sim: usize,
+    in_dir: &'a Path,
+    out_dir: &'a Path,
+}
+
+fn sir_expr(sir_sim: SIRSimProps) {
+    // Runs a sir simulation for all graphs in the data folder (in parallel)
+    // For every graph, the simulation is run n_sim times and maximum number of infected, the time after the peak is reached and the final number of susceptible and the total time till eradication is recoreded
+
+    let pool = ThreadPool::new(N_THREADS);
+    std::fs::create_dir_all(sir_sim.out_dir).unwrap();
+
+    scope_with(&pool, |scope| {
+        for entry in sir_sim.in_dir.read_dir().unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            scope.execute(move || {
+                let mut file = File::open(&path).unwrap();
+                let g = GraphEdgeList::read_pajek(&mut file).unwrap().into();
+                let mut g = SIRGraph::from_graph(&g, sir_sim.mu, sir_sim.beta, sir_sim.init_prop);
+
+                let mut results = Vec::new();
+
+                for _ in 0..sir_sim.n_sim {
+                    g.reset(sir_sim.beta, sir_sim.mu);
+                    let mut max_infected = 0;
+                    let mut time_peak = 0;
+                    let mut time_eradication = 0;
+                    let mut n_susceptible_eradication = 0;
+                    for i in 0.. {
+                        g.step();
+                        let n_infected = g.n_infected();
+                        if n_infected > max_infected {
+                            max_infected = n_infected;
+                            time_peak = i;
+                        }
+                        if n_infected == 0 {
+                            time_eradication = i;
+                            n_susceptible_eradication = g.n_susceptible();
+                            break;
+                        }
+                    }
+                    results.push((
+                        max_infected,
+                        time_peak,
+                        time_eradication,
+                        n_susceptible_eradication,
+                    ));
+                }
+
+                let out_file = sir_sim.out_dir.join(format!(
+                    "{}.csv",
+                    path.file_stem().unwrap().to_str().unwrap()
+                ));
+                let mut file = File::create(out_file).expect("Failed to create file");
+                writeln!(
+                    file,
+                    "max_infected,peak_time,eradication_time,n_susceptible_eradication"
+                )
+                .unwrap();
+                for (peak, peak_time, eradication_time, n_susceptible_eradication) in results {
+                    writeln!(
+                        file,
+                        "{},{},{},{}",
+                        peak, peak_time, eradication_time, n_susceptible_eradication
+                    )
+                    .unwrap();
+                }
+            });
+        }
+    });
+}
+
 fn main() {
     let n_beta = 51;
     let beta_min = 0.0;
     let beta_max = 1.0;
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 4 {
-        panic!("Usage: sir_sim <program> <in_file> <out_file> [args]");
+    if args.len() < 2 {
+        panic!("Usage: sir_sim <program> [args]");
     }
     let program = args[1].as_str();
-    let in_file = &args[2];
-    let out_file = &args[3];
 
     if program == "beta" {
         if args.len() < 5 {
             panic!("Usage: sir_sim beta <in_file> <out_file> <n_beta> <mu>");
         }
+        let in_file = &args[2];
+        let out_file = &args[3];
         let mu = args[4].parse::<f64>().unwrap();
         beta_sweep(in_file, out_file, n_beta, beta_min, beta_max, mu);
     } else if program == "conv_plot" {
         if args.len() < 7 {
             panic!("Usage: sir_sim conv_plot <in_file> <out_file> <beta> <mu> <init_prop>");
         }
+        let in_file = &args[2];
+        let out_file = &args[3];
         let beta = args[4].parse::<f64>().unwrap();
         let mu = args[5].parse::<f64>().unwrap();
         let init_prop = args[6].parse::<f64>().unwrap();
@@ -142,6 +230,25 @@ fn main() {
         for prop in results.iter() {
             writeln!(file, "{}", prop).unwrap();
         }
+    } else if program == "sir_expr" {
+        if args.len() < 8 {
+            panic!("Usage: sir_sim sir_expr <in_dir> <out_dir> <beta> <mu> <init_prop> <n_sim>");
+        }
+        let in_dir = Path::new(&args[2]);
+        let out_dir = Path::new(&args[3]);
+        let beta = args[4].parse::<f64>().unwrap();
+        let mu = args[5].parse::<f64>().unwrap();
+        let init_prop = args[6].parse::<f64>().unwrap();
+        let n_sim = args[7].parse::<usize>().unwrap();
+        let sir_sim = SIRSimProps {
+            beta,
+            mu,
+            init_prop,
+            n_sim,
+            in_dir,
+            out_dir,
+        };
+        sir_expr(sir_sim);
     } else {
         panic!("Unknown program {}", program);
     }
