@@ -45,7 +45,9 @@ def call_sir_sim(*args):
 
 adaptations = [
     # postfix, args
-     ("_max_degree_3", ["max_degree", 3])
+    ("_max_degree_3", ["max_degree", 3]),
+    ("_max_degree_5", ["max_degree", 5]),
+    ("_max_degree_10", ["max_degree", 10]),
 ]
 
 
