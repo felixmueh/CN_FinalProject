@@ -7,6 +7,10 @@ import sys
 from gen_graphs import gen_graphs
 from analyze_sir_results import analyze_sir_results
 
+import matplotlib.pyplot as plt
+
+import numpy as np
+
 this_dir = Path(__file__).resolve().parent
 exec_path_adapt = Path(__file__).resolve().parent / "graph-sd-adaptor/target/release/graph-sd-adaptor"
 exec_path_sim = Path(__file__).resolve().parent / "network-sir/target/release/sir-sim"
@@ -15,6 +19,7 @@ exec_path_sim = Path(__file__).resolve().parent / "network-sir/target/release/si
 # for every type of graph there is a subdirectory
 GRAPHS_DIR = Path("graphs")
 RESULTS_DIR = Path("results")
+PLOT_DIR = Path("plots")
 
 
 def build_path_adaptor_lib():
@@ -43,16 +48,9 @@ def call_sir_sim(*args):
     os.system(f"{exec_path_sim} {' '.join(map(str, args))}")
 
 
-adaptations = [
-    # postfix, args
-    ("_max_degree_3", ["max_degree", 3]),
-    ("_max_degree_5", ["max_degree", 5]),
-    ("_max_degree_10", ["max_degree", 10]),
-]
+sd_sims = np.arange(1, 20, 1)
+adaptations = list((f"_max_degree_{n}", ["max_degree", n]) for n in sd_sims)
 
-sd_sims = [
-    3, 5, 10
-]
 
 def get_sd_sim_results_suffix(sd):
     return f"_sd_max_contacts_{sd}"
@@ -119,19 +117,22 @@ if __name__ == "__main__":
                     call_sir_sim("sir_expr_sd", new_dir, results_dir_graph, beta, mu, prop_init, 20, sd)
 
         if command == "analyze":
-            # for every graph in basic result get metrics and report these together with the adapted graphs
+            os.makedirs(PLOT_DIR, exist_ok=True)
             with open("results_summary.txt", "w") as f:
                 for graph_dir in os.listdir(RESULTS_DIR / "basic"):
                     if not os.path.isdir(RESULTS_DIR / "basic" / graph_dir):
                         continue
+                    sd_sim_results = {}
+                    adapted_results = {}
                     print(f"Runner: analyzing {graph_dir}")
                     results_basic = analyze_sir_results(RESULTS_DIR / "basic" / graph_dir, verbose=False)
                     results_adapted = []
-                    for suffix, _ in adaptations:
+                    for suffix, [_, n] in adaptations:
                         new_dir = Path(suffix) / graph_dir
                         print(f"Runner: analyzing {new_dir}")
                         results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
                         results_adapted.append((suffix, results))
+                        adapted_results[n] = results
                     results_sd_sims = []
                     for sd in sd_sims:
                         suffix = get_sd_sim_results_suffix(sd)
@@ -139,12 +140,28 @@ if __name__ == "__main__":
                         print(f"Runner: analyzing {new_dir}")
                         results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
                         results_sd_sims.append((suffix, results))
+                        sd_sim_results[sd] = results
                     f.write(f"Results for {graph_dir}:\n")
-                    # write in columns for basic and then every adaptation:
-                    # adaptor:    peak += std (std of mean)    peak_time += std (std of mean)    t_end += std (std of mean)    n_sus_end += std (std of mean)
                     column_size = 35
                     f.write(f"{'':<35}{'Peak':<35}{'Peak Time':<35}{'T End':<35}{'N Sus End':<35}\n")
                     f.write(make_row(results_basic, "basic") + "\n")
                     for suffix, results in results_adapted + results_sd_sims:
                         f.write(make_row(results, suffix) + "\n")
                     f.write("\n")
+
+
+                    def plot_metric(metric_name):
+                        fig, ax = plt.subplots()
+                        ax.set_xlabel("max contacts")
+                        ax.set_ylabel(metric_name)
+                        ax.plot(sd_sims, [adapted_results[sd][metric_name][0] for sd in sd_sims], label="adapted")
+                        ax.plot(sd_sims, [sd_sim_results[sd][metric_name][0] for sd in sd_sims], label="sd_sim")
+                        ax.axhline(results_basic[metric_name][0], color="black", linestyle="--", label="no_sd")
+                        ax.legend()
+                        fig.savefig(PLOT_DIR / f"{graph_dir}_{metric_name}.png")
+                        plt.close(fig)
+
+                    plot_metric("peak")
+                    plot_metric("peak_time")
+                    plot_metric("t_end")
+                    plot_metric("n_sus_end")
