@@ -104,6 +104,8 @@ struct SIRSimProps<'a> {
     n_sim: usize,
     in_dir: &'a Path,
     out_dir: &'a Path,
+    do_sd: bool,
+    max_contacts: usize,
 }
 
 fn sir_expr(sir_sim: SIRSimProps) {
@@ -123,7 +125,17 @@ fn sir_expr(sir_sim: SIRSimProps) {
             scope.execute(move || {
                 let mut file = File::open(&path).unwrap();
                 let g = GraphEdgeList::read_pajek(&mut file).unwrap().into();
-                let mut g = SIRGraph::from_graph(&g, sir_sim.mu, sir_sim.beta, sir_sim.init_prop);
+                let mut g = if sir_sim.do_sd {
+                    SIRGraph::from_graph_with_sd(
+                        &g,
+                        sir_sim.mu,
+                        sir_sim.beta,
+                        sir_sim.init_prop,
+                        sir_sim.max_contacts,
+                    )
+                } else {
+                    SIRGraph::from_graph(&g, sir_sim.mu, sir_sim.beta, sir_sim.init_prop)
+                };
 
                 let mut results = Vec::new();
 
@@ -247,6 +259,30 @@ fn main() {
             n_sim,
             in_dir,
             out_dir,
+            do_sd: false,
+            max_contacts: 0,
+        };
+        sir_expr(sir_sim);
+    } else if program == "sir_expr_sd" {
+        if args.len() < 9 {
+            panic!("Usage: sir_sim sir_expr <in_dir> <out_dir> <beta> <mu> <init_prop> <n_sim>");
+        }
+        let in_dir = Path::new(&args[2]);
+        let out_dir = Path::new(&args[3]);
+        let beta = args[4].parse::<f64>().unwrap();
+        let mu = args[5].parse::<f64>().unwrap();
+        let init_prop = args[6].parse::<f64>().unwrap();
+        let n_sim = args[7].parse::<usize>().unwrap();
+        let max_contacts = args[8].parse::<usize>().unwrap();
+        let sir_sim = SIRSimProps {
+            beta,
+            mu,
+            init_prop,
+            n_sim,
+            in_dir,
+            out_dir,
+            do_sd: true,
+            max_contacts,
         };
         sir_expr(sir_sim);
     } else {

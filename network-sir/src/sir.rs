@@ -24,6 +24,10 @@ pub struct SIRGraph<'a> {
     infection_rate: f64,
     initial_infection_probability: f64,
     rng: rand::rngs::ThreadRng,
+
+    // social distancing settings
+    enforce_social_distancing: bool,
+    max_contacts: usize,
 }
 
 impl<'a> SIRGraph<'a> {
@@ -74,6 +78,24 @@ impl<'a> SIRGraph<'a> {
         self.first_is_current = true;
     }
 
+    pub fn from_graph_with_sd(
+        graph: &'a GraphAdjacencyList,
+        recovery_rate: f64,
+        infection_rate: f64,
+        initial_infection_probability: f64,
+        max_contacts: usize,
+    ) -> Self {
+        let mut g = Self::from_graph(
+            graph,
+            recovery_rate,
+            infection_rate,
+            initial_infection_probability,
+        );
+        g.enforce_social_distancing = true;
+        g.max_contacts = max_contacts;
+        g
+    }
+
     pub fn from_graph(
         graph: &'a GraphAdjacencyList,
         recovery_rate: f64,
@@ -100,6 +122,8 @@ impl<'a> SIRGraph<'a> {
             infection_rate,
             initial_infection_probability,
             rng,
+            enforce_social_distancing: false,
+            max_contacts: 0,
         };
         g.reset(infection_rate, recovery_rate);
         g
@@ -118,9 +142,27 @@ impl<'a> SIRGraph<'a> {
                 SIRState::Recovered => {}
                 SIRState::Susceptible => {
                     let n_infected_neighbors = self.n_infected_neighbors[i];
-                    if self.rng.gen::<f64>()
-                        > (1.0 - self.infection_rate).powf(n_infected_neighbors as f64)
+                    let n_neighbors = self.graph.nodes[i].len();
+                    let infection_prop = if self.enforce_social_distancing
+                        && self.max_contacts < n_neighbors
                     {
+                        // randomly sample max_contacts neighbors
+                        let mut n_sampled_neighbors_infected = 0;
+                        let mut infected_neighbors = n_infected_neighbors;
+                        let mut total_neighbors = self.graph.nodes[i].len();
+                        for _ in 0..self.max_contacts {
+                            let j = self.rng.gen_range(0..total_neighbors);
+                            if j < infected_neighbors {
+                                infected_neighbors -= 1;
+                                n_sampled_neighbors_infected += 1;
+                            }
+                            total_neighbors -= 1;
+                        }
+                        1.0 - (1.0 - self.infection_rate).powf(n_sampled_neighbors_infected as f64)
+                    } else {
+                        1.0 - (1.0 - self.infection_rate).powf(n_infected_neighbors as f64)
+                    };
+                    if self.rng.gen::<f64>() < infection_prop {
                         infected_next[i] = SIRState::Infected;
                         for j in self.graph.nodes[i].iter() {
                             self.n_infected_neighbors[*j] += 1;

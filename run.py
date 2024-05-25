@@ -50,6 +50,13 @@ adaptations = [
     ("_max_degree_10", ["max_degree", 10]),
 ]
 
+sd_sims = [
+    3, 5, 10
+]
+
+def get_sd_sim_results_suffix(sd):
+    return f"_sd_max_contacts_{sd}"
+
 
 def make_entry(result, column_size=35):
     # name:  value +- std (std of mean)
@@ -82,6 +89,7 @@ if __name__ == "__main__":
                         continue
                     call_graph_sd_adaptor(GRAPHS_DIR / graph_dir, new_dir, *args)
         if command == "sim_all":
+            build_sir_sim_lib()
             mu = 0.1
             beta = 0.1
             prop_init = 0.05
@@ -102,6 +110,14 @@ if __name__ == "__main__":
                         print(f"Runner: {results_dir_graph} already exists, skipping...")
                         continue
                     call_sir_sim("sir_expr", new_dir, results_dir_graph, beta, mu, prop_init, 20)
+                for sd in sd_sims:
+                    suffix = get_sd_sim_results_suffix(sd)
+                    results_dir_graph = f"{RESULTS_DIR}/{suffix}/{graph_dir}_mu_{mu}_beta_{beta}_prop_init_{prop_init}"
+                    if os.path.exists(results_dir_graph):
+                        print(f"Runner: {results_dir_graph} already exists, skipping...")
+                        continue
+                    call_sir_sim("sir_expr_sd", new_dir, results_dir_graph, beta, mu, prop_init, 20, sd)
+
         if command == "analyze":
             # for every graph in basic result get metrics and report these together with the adapted graphs
             with open("results_summary.txt", "w") as f:
@@ -116,12 +132,19 @@ if __name__ == "__main__":
                         print(f"Runner: analyzing {new_dir}")
                         results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
                         results_adapted.append((suffix, results))
+                    results_sd_sims = []
+                    for sd in sd_sims:
+                        suffix = get_sd_sim_results_suffix(sd)
+                        new_dir = Path(suffix) / graph_dir
+                        print(f"Runner: analyzing {new_dir}")
+                        results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
+                        results_sd_sims.append((suffix, results))
                     f.write(f"Results for {graph_dir}:\n")
                     # write in columns for basic and then every adaptation:
                     # adaptor:    peak += std (std of mean)    peak_time += std (std of mean)    t_end += std (std of mean)    n_sus_end += std (std of mean)
                     column_size = 35
                     f.write(f"{'':<35}{'Peak':<35}{'Peak Time':<35}{'T End':<35}{'N Sus End':<35}\n")
                     f.write(make_row(results_basic, "basic") + "\n")
-                    for suffix, results in results_adapted:
+                    for suffix, results in results_adapted + results_sd_sims:
                         f.write(make_row(results, suffix) + "\n")
                     f.write("\n")
