@@ -12,22 +12,25 @@ from network_gen import *
 
 n_graphs = 20
 
+# sim_tasks = [
+#     ("BA", gen_ba_graph, [1000, 3, 10]),
+#     ("BA", gen_ba_graph, [1000, 6, 10]),
+#     ("BA", gen_ba_graph, [1000, 10, 15]),
+#     ("ER", gen_er_graph, [1000, 0.1]),
+#     ("ER", gen_er_graph, [1000, 0.9]),
+#     ("WS", gen_ws_graph, [1000, 20, 0.1]),
+#     ("WS", gen_ws_graph, [1000, 10, 0.1]),
+#     ("WS", gen_ws_graph, [1000, 40, 0.1]),
+#     ("ER", gen_er_graph, [1000, 0.3]),
+#     ("WS", gen_ws_graph, [1000, 20, 0.3]),
+#     ("ER", gen_er_graph, [1000, 0.02]),
+#     ("ER", gen_er_graph, [1000, 0.5]),
+#     ("WS", gen_ws_graph, [1000, 20, 0.02]),
+#     ("CM-Poisson", gen_cm_poisson_graph, [1000, 20]),
+#     ("CM-Powerlaw", gen_cm_powerlaw_graph, [1000, 3, 4])
+# ]
 sim_tasks = [
-    ("BA", gen_ba_graph, [1000, 3, 10]),
-    ("BA", gen_ba_graph, [1000, 6, 10]),
-    ("BA", gen_ba_graph, [1000, 10, 15]),
-    ("ER", gen_er_graph, [1000, 0.1]),
-    ("ER", gen_er_graph, [1000, 0.9]),
-    ("WS", gen_ws_graph, [1000, 20, 0.1]),
-    ("WS", gen_ws_graph, [1000, 10, 0.1]),
-    ("WS", gen_ws_graph, [1000, 40, 0.1]),
-    ("ER", gen_er_graph, [1000, 0.3]),
-    ("WS", gen_ws_graph, [1000, 20, 0.3]),
-    ("ER", gen_er_graph, [1000, 0.02]),
-    ("ER", gen_er_graph, [1000, 0.5]),
-    ("WS", gen_ws_graph, [1000, 20, 0.02]),
-    ("CM-Poisson", gen_cm_poisson_graph, [1000, 20]),
-    ("CM-Powerlaw", gen_cm_powerlaw_graph, [1000, 3, 4])
+    ("CM-Powerlaw", gen_cm_powerlaw_graph, [1000, 2, 6]),
 ]
 
 def get_name(graph):
@@ -81,3 +84,8 @@ def validate_graphs(directory):
     pool.join()
 
 
+if __name__ == "__main__":
+    if sys.argv[1] == "gen":
+        gen_graphs(sys.argv[2])
+    elif sys.argv[1] == "validate":
+        validate_graph(sys.argv[2])

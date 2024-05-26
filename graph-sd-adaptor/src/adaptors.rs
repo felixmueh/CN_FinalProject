@@ -6,14 +6,16 @@ pub trait Adaptor
 where
     Self: Sync + Send,
 {
-    fn adapt(&self, graph: GraphEdgeList) -> GraphEdgeList;
+    fn adapt(&self, graph: &GraphEdgeList) -> GraphEdgeList;
 }
 
 pub struct NoOpAdaptor;
 
 impl Adaptor for NoOpAdaptor {
-    fn adapt(&self, graph: GraphEdgeList) -> GraphEdgeList {
-        graph
+    fn adapt(&self, graph: &GraphEdgeList) -> GraphEdgeList {
+        GraphEdgeList {
+            edges: graph.edges.clone(),
+        }
     }
 }
 
@@ -22,9 +24,9 @@ pub struct MaxDegreeAdaptor {
 }
 
 impl Adaptor for MaxDegreeAdaptor {
-    fn adapt(&self, graph: GraphEdgeList) -> GraphEdgeList {
+    fn adapt(&self, graph: &GraphEdgeList) -> GraphEdgeList {
         let mut n_neighbors = vec![0; graph.n_nodes()];
-        let mut edges = graph.edges;
+        let mut edges = graph.edges.clone();
         let edges_len = edges.len();
         edges.shuffle(&mut rand::thread_rng());
         let mut new_edges = Vec::new();

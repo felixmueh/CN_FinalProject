@@ -37,6 +37,8 @@ def analyze_sir_results(folder_path: Path, verbose=True):
             means = np.mean(data, axis=0)
             stds = np.std(data, axis=0)
             print(f"{f:<30} {_make_mean_std_str(means[0], stds[0])} {_make_mean_std_str(means[1], stds[1])} {_make_mean_std_str(means[2], stds[2])} {_make_mean_std_str(means[3], stds[3])}")
+    if all_data is None:
+        return None
 
     if verbose:
         print('-' * 110)

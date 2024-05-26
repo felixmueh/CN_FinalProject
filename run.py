@@ -5,6 +5,7 @@ import os
 import sys
 
 from collections import defaultdict
+from multiprocessing import Pool
 
 from gen_graphs import gen_graphs
 from analyze_sir_results import analyze_sir_results
@@ -21,6 +22,9 @@ exec_path_sim = Path(__file__).resolve().parent / "network-sir/target/release/si
 # for every type of graph there is a subdirectory
 GRAPHS_DIR = Path("graphs")
 BASIC_DIR_NAME = "basic"
+SINGLE_DIR = Path("graphs_single")
+SINGLE_DIR_NAME = "single"
+SINGLE_NO_ADAPT_DIR = Path("graphs-sd-single-no-adapt")
 RESULTS_DIR = Path("results")
 PLOT_DIR = Path("plots")
 
@@ -53,8 +57,11 @@ def build_sir_sim_lib():
 
 def call_graph_sd_adaptor(in_file, out_file, *args):
     print(f"Runner: calling graph-sd-adaptor with args: {args}")
-    os.system(f"{exec_path_adapt} {in_file} {out_file} {' '.join(map(str, args))}")
+    os.system(f"{exec_path_adapt} folder {in_file} {out_file} {' '.join(map(str, args))}")
 
+def call_graph_sd_adaptor_single(in_file, out_file, nadaptions, *args):
+    print(f"Runner: calling graph-sd-adaptor with args: {args}")
+    os.system(f"{exec_path_adapt} file {nadaptions} {in_file} {out_file} {' '.join(map(str, args))}")
 
 def call_sir_sim(*args):
     print(f"Runner: calling sir-sim with args: {args}")
@@ -83,6 +90,21 @@ def make_row(analysis_result, name):
 def cmd_gen():
     gen_graphs(GRAPHS_DIR / BASIC_DIR_NAME)
 
+def adapt_single(graph_file):
+    print("Here")
+    graph_file_no_ext = graph_file[:-4]
+    # adapt every graph 20 times write to
+    for f_name, f_args in ADAPTORS:
+        for cmax in CMAXs:
+            name, args = f_name(cmax), f_args(cmax)
+            new_dir = GRAPHS_DIR / name / graph_file_no_ext
+            if os.path.exists(new_dir):
+                print(f"Runner: {new_dir} already exists, skipping...")
+                continue
+            os.makedirs(new_dir, exist_ok=True)
+            new_folder = GRAPHS_DIR / name / graph_file_no_ext
+            print(f"Runner: adapting {graph_file} to {new_folder}")
+            call_graph_sd_adaptor_single(SINGLE_DIR / graph_file, new_folder, 20, *args)
 
 def cmd_adapt():
     build_path_adaptor_lib()
@@ -97,6 +119,16 @@ def cmd_adapt():
                     print(f"Runner: {new_dir} already exists, skipping...")
                     continue
                 call_graph_sd_adaptor(GRAPHS_DIR / BASIC_DIR_NAME / graph_dir, new_dir, *args)
+
+
+    print("Runner: adapting single graphs")
+    p = Pool(10)
+    for graph_file in os.listdir(SINGLE_DIR):
+        if not graph_file.endswith(".net"):
+            continue
+        p.apply_async(adapt_single, args=(graph_file,))
+    p.close()
+    p.join()
 
 def cmd_sim_all():
     build_sir_sim_lib()
@@ -115,20 +147,39 @@ def cmd_sim_all():
             else:
                 call_sir_sim("sir_expr", total_graph_dir, results_dir_graph, beta, mu, prop_init, 20)
 
-    # implicit sd sim for all basic graphs
-    for graph_dir in os.listdir(GRAPHS_DIR / BASIC_DIR_NAME):
-        if not os.path.isdir(GRAPHS_DIR / BASIC_DIR_NAME / graph_dir):
-            continue
-        for cmax in CMAXs:
-            results_dir_graph = RESULTS_DIR / r_folder_name / get_sd_sim_results_name(cmax) / graph_dir
-            total_graph_dir = GRAPHS_DIR / BASIC_DIR_NAME / graph_dir
-            if os.path.exists(results_dir_graph):
-                print(f"Runner: {results_dir_graph} already exists, skipping...")
+    # implicit sd sim for all basic graphs and all single degree graphs
+    for base_graph_dir in ["basic", "single"]:
+        for graph_dir in os.listdir(GRAPHS_DIR / base_graph_dir):
+            if not os.path.isdir(GRAPHS_DIR / base_graph_dir / graph_dir):
                 continue
-            call_sir_sim("sir_expr_sd", total_graph_dir, results_dir_graph, beta, mu, prop_init, 20, cmax)
+            for cmax in CMAXs:
+                results_dir_graph = RESULTS_DIR / r_folder_name / get_sd_sim_results_name(cmax) / graph_dir
+                total_graph_dir = GRAPHS_DIR / base_graph_dir / graph_dir
+                if os.path.exists(results_dir_graph):
+                    print(f"Runner: {results_dir_graph} already exists, skipping...")
+                    continue
+                call_sir_sim("sir_expr_sd", total_graph_dir, results_dir_graph, beta, mu, prop_init, 20, cmax)
 
 
 def overview_results(results):
+    graph_results = defaultdict(lambda: defaultdict(dict))
+    for (sd_type, cmax), graph_results_type in results.items():
+        for graph, graph_result in graph_results_type.items():
+            graph_results[graph][sd_type][cmax] = graph_result
+
+    with open("results_summary.txt", "w") as f:
+        f.write("Results overview:\n")
+        f.write("Format is: name:  value +- std (std of mean)\n\n")
+        for graph, graph_results_by_type in graph_results.items():
+            f.write(f"Results for {graph}:\n")
+            column_size = 35
+            f.write(f"{'':<35}{'Peak':<35}{'Peak Time':<35}{'T End':<35}{'N Sus End':<35}\n")
+            # f.write(make_row(graph_results["basic"], "basic") + "\n")
+            for name, results in graph_results_by_type.items():
+                for n, results in results.items():
+                    f.write(make_row(results, name + f"_{n}") + "\n")
+            f.write("\n")
+
     # with open("results_summary.txt", "w") as f:
     # for graph_dir in os.listdir(RESULTS_DIR / "basic"):
     #     if not os.path.isdir(RESULTS_DIR / "basic" / graph_dir):
@@ -209,7 +260,7 @@ def cmd_analyze():
     for folder in os.listdir(results_dir):
         if not os.path.isdir(results_dir / folder):
             continue
-        if folder == BASIC_DIR_NAME:
+        if folder == BASIC_DIR_NAME or folder == SINGLE_DIR_NAME:
             f_type = ("basic", np.inf)
         elif folder.startswith("sd_max_contacts"):
             f_type = ("sd_sim", int(folder.split("_")[-1]))
@@ -220,10 +271,29 @@ def cmd_analyze():
         for graph in os.listdir(results_dir / folder):
             if not os.path.isdir(results_dir / folder / graph):
                 continue
-            results[f_type][graph] = analyze_sir_results(results_dir / folder / graph, verbose=False)
+            res = analyze_sir_results(results_dir / folder / graph, verbose=False)
+            if res is not None:
+                results[f_type][graph] = res
     print("Results loaded, making plots ...")
     make_sd_efficacy_graphs(results, PLOT_DIR / get_result_dir_name(mu, beta, prop_init))
+    overview_results(results)
 
+def cmd_copy_single():
+    """Moves the graphs from the single folder into their own subdirectories in the main graph directory to include them in the simulation."""
+    for f in os.listdir(SINGLE_DIR):
+        if not f.endswith(".net"):
+            continue
+        name = f[:-4]
+        new_dir = GRAPHS_DIR / "single" / name
+        os.makedirs(new_dir, exist_ok=True)
+        os.system(f"cp {SINGLE_DIR / f} {new_dir / f}")
+    for f in os.listdir(SINGLE_NO_ADAPT_DIR):
+        if not f.endswith(".net"):
+            continue
+        name = f[:-4]
+        new_dir = GRAPHS_DIR / "single_no_adapt" / name
+        os.makedirs(new_dir, exist_ok=True)
+        os.system(f"cp {SINGLE_NO_ADAPT_DIR / f} {new_dir / f}")
 
 # TODO: clean existing directories?
 if __name__ == "__main__":
@@ -233,9 +303,14 @@ if __name__ == "__main__":
     for command in sys.argv[1:]:
         if command == "gen":
             cmd_gen()
-        if command == "adapt":
+        elif command == "copy_single":
+            cmd_copy_single()
+        elif command == "adapt":
             cmd_adapt()
-        if command == "sim_all":
+        elif command == "sim_all":
             cmd_sim_all()
-        if command == "analyze":
+        elif command == "analyze":
             cmd_analyze()
+        else:
+            print(f"Unknown command: {command}")
+            sys.exit(1)
