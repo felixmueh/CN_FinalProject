@@ -15,6 +15,19 @@ fn get_adaptor(adaptor: &str, args: &[String]) -> Box<dyn Adaptor> {
             let max_degree = args[0].parse::<usize>().expect("Invalid max degree");
             Box::new(graph_sd_adaptor::MaxDegreeAdaptor { max_degree })
         }
+        "cheat" => {
+            if args.len() < 2 {
+                panic!(
+                    "Usage: graph-sd-adaptor <input-folder> <output-folder> cheat <max-degree> <cheat-prop>"
+                );
+            }
+            let max_degree = args[0].parse::<usize>().expect("Invalid max degree");
+            let cheat_prop = args[1].parse::<f64>().expect("Invalid cheat prop");
+            Box::new(graph_sd_adaptor::MaxDegreeCheatAdaptor {
+                max_degree,
+                cheat_prop,
+            })
+        }
         _ => panic!("Unknown adaptor {}", adaptor),
     };
 }

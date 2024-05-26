@@ -7,7 +7,7 @@ import sys
 from collections import defaultdict
 from multiprocessing import Pool
 
-from gen_graphs import gen_graphs
+from gen_graphs import gen_graphs, gen_ws_graph
 from analyze_sir_results import analyze_sir_results
 
 import matplotlib.pyplot as plt
@@ -180,45 +180,17 @@ def overview_results(results):
                     f.write(make_row(results, name + f"_{n}") + "\n")
             f.write("\n")
 
-    # with open("results_summary.txt", "w") as f:
-    # for graph_dir in os.listdir(RESULTS_DIR / "basic"):
-    #     if not os.path.isdir(RESULTS_DIR / "basic" / graph_dir):
-    #         continue
-    #     sd_sim_results = {}
-    #     adapted_results = {}
-    #     print(f"Runner: analyzing {graph_dir}")
-    #     results_basic = analyze_sir_results(RESULTS_DIR / "basic" / graph_dir, verbose=False)
-    #     results_adapted = []
-    #     for name, [_, n] in adaptations:
-    #         new_dir = Path(name) / graph_dir
-    #         print(f"Runner: analyzing {new_dir}")
-    #         results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
-    #         results_adapted.append((name, results))
-    #         adapted_results[n] = results
-    #     results_sd_sims = []
-    #     for cmax in sd_sims:
-    #         name = get_sd_sim_results_suffix(cmax)
-    #         new_dir = Path(name) / graph_dir
-    #         print(f"Runner: analyzing {new_dir}")
-    #         results = analyze_sir_results(RESULTS_DIR / new_dir, verbose=False)
-    #         results_sd_sims.append((name, results))
-    #         sd_sim_results[cmax] = results
-    #     f.write(f"Results for {graph_dir}:\n")
-    #     column_size = 35
-    #     f.write(f"{'':<35}{'Peak':<35}{'Peak Time':<35}{'T End':<35}{'N Sus End':<35}\n")
-    #     f.write(make_row(results_basic, "basic") + "\n")
-    #     for name, results in results_adapted + results_sd_sims:
-    #         f.write(make_row(results, name) + "\n")
-    #     f.write("\n")
-    pass
 
-
-def make_sd_efficacy_graphs(results, plot_dir):
+def make_sd_efficacy_graphs(results, plot_dir, sd_types=None):
+    if sd_types is None:
+        sd_types = ["basic", "sd_sim", "simple_max_degree"]
     # Results is mapping from (sd_type, cmax) to a dictionary of results for different graphs
     # transpose results to map form graph to (sd_type, cmax)
     os.makedirs(plot_dir, exist_ok=True)
     graph_results = defaultdict(lambda: defaultdict(dict))
     for (sd_type, cmax), graph_results_type in results.items():
+        if sd_type not in sd_types:
+            continue
         for graph, graph_result in graph_results_type.items():
             graph_results[graph][sd_type][cmax] = graph_result
 
@@ -295,6 +267,44 @@ def cmd_copy_single():
         os.makedirs(new_dir, exist_ok=True)
         os.system(f"cp {SINGLE_NO_ADAPT_DIR / f} {new_dir / f}")
 
+def cmd_cheat_prop_expr():
+    build_path_adaptor_lib()
+    build_sir_sim_lib()
+    graph_dir = Path("cheat_graphs")
+    results_dir = Path("cheat_results")
+    os.makedirs(graph_dir / "basic", exist_ok=True)
+    cheat_props = np.arange(0, 1.0, 0.1)
+    for i in range(20):
+        gen_ws_graph(1000, 20, 0.1, str(graph_dir / "basic" / f"ws-{i}.net"))
+    for prop in cheat_props:
+        call_graph_sd_adaptor(graph_dir / "basic", graph_dir / f"cheat_{prop}", "cheat", 4, prop)
+        call_sir_sim("sir_expr", graph_dir / f"cheat_{prop}", results_dir / (get_result_dir_name(mu, beta, prop_init) + f"_cheat_prop={prop}"), beta, mu, prop_init, 20)
+
+
+def cmd_cheat_prop_ana():
+    results_dir = Path("cheat_results")
+    results = {}
+    for folder in os.listdir(results_dir):
+        if not os.path.isdir(results_dir / folder):
+            continue
+        cheat_prop = float(folder.split("=")[-1])
+        res = analyze_sir_results(results_dir / folder, verbose=False)
+        results[cheat_prop] = res
+    for metric in ["peak", "peak_time", "t_end", "n_sus_end"]:
+        keys = sorted(results.keys())
+        fig, ax = plt.subplots()
+        fig.set_size_inches(10, 6)
+        ax.set_xlim(0, 1)
+        ax.set_xlabel("Cheat prop")
+        ax.set_ylabel(metric)
+        ax.plot(keys, [results[k][metric][0] for k in keys], label="mean")
+        ax.fill_between(keys, [results[k][metric][0] - results[k][metric][1] for k in keys],
+                        [results[k][metric][0] + results[k][metric][1] for k in keys], alpha=0.5, label="std")
+        ax.legend()
+        ax.set_title(f"Cheat prop {metric} for WS graph with 1000 nodes, 20 neighbors and 0.02 probability")
+        fig.savefig(f"cheat_{metric}.png")
+
+
 # TODO: clean existing directories?
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -311,6 +321,10 @@ if __name__ == "__main__":
             cmd_sim_all()
         elif command == "analyze":
             cmd_analyze()
+        elif command == "cheat_prop_expr":
+            cmd_cheat_prop_expr()
+        elif command == "cheat_prop_ana":
+            cmd_cheat_prop_ana()
         else:
             print(f"Unknown command: {command}")
             sys.exit(1)
