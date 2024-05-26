@@ -11,5 +11,7 @@ data = np.genfromtxt(filename, skip_header=1, delimiter=",")
 labels = np.genfromtxt(filename, max_rows=1, dtype=str, delimiter=",")
 
 plt.plot(data)
+plt.xlabel("Simulation Time")
+plt.ylabel("Number of Nodes")
 plt.legend(labels)
-plt.show()
+plt.savefig(filename.replace(".csv", ".png"))
